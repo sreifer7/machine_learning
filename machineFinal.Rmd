@@ -1,0 +1,138 @@
+---
+title: "Machine Learning Final"
+author: "Sammy Reifer"
+date: "February 24, 2017"
+output: html_document
+---
+**Import the Data**
+```{r}
+movement <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+
+finalTesting <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+```
+
+Split Training into Training & Test Set, will only use the best final model to predict the finalTesting data.
+```{r}
+library(caret)
+
+set.seed(87235)
+
+inTrain <- createDataPartition(y=movement$classe, p = .75, list = FALSE)
+
+training <- movement[inTrain,]
+testing <- movement[-inTrain,]
+
+dim(training)
+dim(testing)
+```
+
+**Clean the data**
+
+Remove NearZeroVariance variables
+```{r}
+
+nzvCol <- nearZeroVar(training)
+
+training <- training[,-nzvCol] 
+
+ncol(training)
+```
+
+Remove Variables with any NA values or any empty strings
+```{r}
+filterData <- function(rmNA){
+        colKeep <- !sapply(rmNA, function(x) any(is.na(x)))
+        rmNA <- rmNA[, colKeep]
+        colKeep <- !sapply(rmNA, function(x) any(x==""))
+        rmNA <- rmNA[, colKeep]
+}
+
+training <- filterData(training)
+ncol(training)
+```
+
+
+Remove non-predictor variables i.e. username, "X", etc.
+```{r}
+training <- training[ ,-which(names(training) %in% c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "num_window","new_window"))]
+ncol(training)
+```
+
+Clean the testing set 
+```{r}
+nzvColTest <- nearZeroVar(testing)
+testing <- testing[,-nzvColTest] 
+testing <- filterData(testing)
+testing <- testing[ ,-which(names(testing) %in% c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "num_window", "new_window"))]
+ncol(testing)
+```
+
+**Model Training**
+
+Cross Validation, i.e. setting the method for how the models subset the training data using 10-fold Cross Validation
+```{r}
+cvControl <- trainControl(method="repeatedcv", number = 5, repeats = 1, verboseIter = FALSE)
+```
+
+Decision Trees
+```{r}
+set.seed(56243)
+library(rpart)
+library(e1071)
+
+treeFit <- train(classe~., data = training, method ="rpart", trControl = cvControl)
+
+treePredict <- predict(treeFit, newdata = testing)
+
+confusionMatrix(treePredict, testing$classe)$overall[1]
+```
+
+Random Forest
+
+```{r}
+set.seed(26345)
+library(randomForest)
+
+forestFit <- train(classe~., data = training, method = "rf", trControl=cvControl, ntree = 50)
+
+forestPredict <- predict(forestFit, newdata= testing)
+
+confusionMatrix(forestPredict, testing$classe)$overall[1]
+```
+
+Boosting w/Trees
+```{r}
+set.seed(96453)
+
+library(gbm)
+
+boostingFit <- train(classe~., data = training, method = "gbm", trControl=cvControl, verbose = FALSE)
+
+boostPredict <- predict(boostingFit, newdata = testing)
+
+confusionMatrix(boostPredict, testing$class)$overall[1]
+
+```
+
+
+**Sample Error**
+The Random Forests returned the best accuracty, even though GBM was a close second. 
+
+The expected out-of-sample error is therefore 
+```{r}
+1-.993474
+```
+
+**Predicting the Results on the Test Data**
+Clean testing Data
+```{r}
+finalTesting <- finalTesting[,intersect(names(training),names(finalTesting))]
+dim(finalTesting)
+```
+
+```{r}
+set.seed(56748)
+finalPredict <- predict(forestFit, finalTesting)
+finalPredict
+```
+
